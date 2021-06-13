@@ -1,0 +1,3 @@
+python Arpanet19723.py --controller remote
+ryu-manager exp3_1.py --observe-links
+ryu-manager exp3_2.py --observe-links

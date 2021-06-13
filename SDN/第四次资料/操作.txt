@@ -1,0 +1,25 @@
+前提:
+1.每次改完代码都要运行
+cd veriflow/VeriFlow
+make clean all
+
+
+1.将veriflow.cpp中的1019行和1020行注释解除
+
+在ryu/ryu/app中运行
+ryu-manager ofctl_rest.py shortest_path.py --ofp-tcp-listen-port 1024 --observe-links
+
+在beans/veriflow/Veriflow中运行
+./VeriFlow 6633 127.0.0.1 1024 Arpanet19723.txt log_file.txt
+
+在mininet/mininet/examples运行
+sudo python Arpanet19723.py
+sudo python waypoint_path.py
+
+在拓扑中运行 SDC ping MIT
+
+2.1087行
+
+3.
+
+4.git diff HEAD origin/HEAD

@@ -1,0 +1,6 @@
+sudo python topo.py
+ryu-manager exp2_1.py --ofp-tcp-listen-port 6633 --observe-links
+ryu-manager exp2_2.py --ofp-tcp-listen-port 6633 --observe-links
+xterm h1
+link s1 s4 down
+link s1 s4 up

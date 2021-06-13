@@ -1,0 +1,265 @@
+From f6056e61ba82b2ce4033c074de82a04bc6de52d0 Mon Sep 17 00:00:00 2001
+From: reason <x.liu.reason@outlook.com>
+Date: Wed, 20 May 2020 17:56:02 +0800
+Subject: [PATCH] for xjtu-sdn-exp-2020
+
+---
+ veriflow/VeriFlow/Network.cpp                 |  1 +
+ veriflow/VeriFlow/OpenFlowProtocolMessage.cpp | 17 ++++---
+ veriflow/VeriFlow/Rule.cpp                    |  8 +++-
+ veriflow/VeriFlow/Rule.h                      |  1 +
+ veriflow/VeriFlow/VeriFlow.cpp                | 45 ++++++++++++++++---
+ veriflow/VeriFlow/VeriFlow.h                  |  2 +-
+ 6 files changed, 59 insertions(+), 15 deletions(-)
+
+diff --git a/veriflow/VeriFlow/Network.cpp b/veriflow/VeriFlow/Network.cpp
+index e3d8d15..befaade 100644
+--- a/veriflow/VeriFlow/Network.cpp
++++ b/veriflow/VeriFlow/Network.cpp
+@@ -18,6 +18,7 @@
+ #include <cstdio>
+ #include <string>
+ #include <unordered_map>
++#include <sstream>
+ #include "Network.h"
+ #include "ForwardingDevice.h"
+ 
+diff --git a/veriflow/VeriFlow/OpenFlowProtocolMessage.cpp b/veriflow/VeriFlow/OpenFlowProtocolMessage.cpp
+index a081d3b..ac5084d 100644
+--- a/veriflow/VeriFlow/OpenFlowProtocolMessage.cpp
++++ b/veriflow/VeriFlow/OpenFlowProtocolMessage.cpp
+@@ -292,8 +292,10 @@ void OpenFlowProtocolMessage::processFlowRemoved(const char* data, ProxyConnecti
+ 	rule.type = FORWARDING;
+ 	rule.wildcards = ntohl(ofr->match.wildcards);
+ 
+-	rule.fieldValue[IN_PORT] = ::convertIntToString(ntohs(ofr->match.in_port));
+-	rule.fieldMask[IN_PORT] = ((rule.wildcards == OFPFW_ALL) || ((rule.wildcards & OFPFW_IN_PORT) != 0)) ? "0" : "65535";
++	rule.fieldValue[IN_PORT] = "0";//::convertIntToString(ntohs(ofr->match.in_port));
++	rule.fieldMask[IN_PORT] = "0";//((rule.wildcards == OFPFW_ALL) || ((rule.wildcards & OFPFW_IN_PORT) != 0)) ? "0" : "65535";
++
++	rule.in_port = ntohs(ofr->match.in_port);
+ 
+ 	rule.fieldValue[DL_SRC] = ::getMacValueAsString(ofr->match.dl_src);
+ 	rule.fieldMask[DL_SRC] = ((rule.wildcards == OFPFW_ALL) || ((rule.wildcards & OFPFW_DL_SRC) != 0)) ? "0:0:0:0:0:0" : "FF:FF:FF:FF:FF:FF";
+@@ -346,12 +348,13 @@ void OpenFlowProtocolMessage::processFlowRemoved(const char* data, ProxyConnecti
+ 	rule.nextHop = "";
+ 	rule.priority = ntohs(ofr->priority);
+ 
+-	/* double updateTime = 0, packetClassSearchTime = 0, graphBuildTime = 0, queryTime = 0;
+-	unsigned long ecCount = 0; */
++	/*double updateTime = 0, packetClassSearchTime = 0, graphBuildTime = 0, queryTime = 0;
++	unsigned long ecCount = 0;*/
+ 
+ 	// gettimeofday(&start, NULL);
+ 	pthread_mutex_lock(info.veriflowMutex);
+ 	// info.veriflow->verifyRule(rule, OFPT_FLOW_REMOVED, updateTime, packetClassSearchTime, graphBuildTime, queryTime, ecCount, fp);
++	fprintf(fp, "removing rule %s\n", rule.toString().c_str());
+ 	info.veriflow->removeRule(rule);
+ 	pthread_mutex_unlock(info.veriflowMutex);
+ }
+@@ -404,8 +407,10 @@ void OpenFlowProtocolMessage::processFlowMod(const char* data, ProxyConnectionIn
+ 				rule.type = FORWARDING;
+ 				rule.wildcards = ntohl(ofm->match.wildcards);
+ 
+-				rule.fieldValue[IN_PORT] = ::convertIntToString(ntohs(ofm->match.in_port));
+-				rule.fieldMask[IN_PORT] = ((rule.wildcards == OFPFW_ALL) || ((rule.wildcards & OFPFW_IN_PORT) != 0)) ? "0" : "65535";
++				rule.fieldValue[IN_PORT] = "0";
++				rule.fieldMask[IN_PORT] = "0";//((rule.wildcards == OFPFW_ALL) || ((rule.wildcards & OFPFW_IN_PORT) != 0)) ? "0" : "65535";
++
++				rule.in_port = ntohs(ofm->match.in_port);
+ 
+ 				rule.fieldValue[DL_SRC] = ::getMacValueAsString(ofm->match.dl_src);
+ 				rule.fieldMask[DL_SRC] = ((rule.wildcards == OFPFW_ALL) || ((rule.wildcards & OFPFW_DL_SRC) != 0)) ? "0:0:0:0:0:0" : "FF:FF:FF:FF:FF:FF";
+diff --git a/veriflow/VeriFlow/Rule.cpp b/veriflow/VeriFlow/Rule.cpp
+index a0ec591..847d902 100644
+--- a/veriflow/VeriFlow/Rule.cpp
++++ b/veriflow/VeriFlow/Rule.cpp
+@@ -36,6 +36,7 @@ Rule::Rule()
+ 
+ 	this->location = "";
+ 	this->nextHop = "";
++	this->in_port = 65536;
+ 	this->priority = INVALID_PRIORITY;
+ 	// this->outPort = OFPP_NONE;
+ }
+@@ -54,6 +55,7 @@ Rule::Rule(const Rule& other)
+ 
+ 	this->location = other.location;
+ 	this->nextHop = other.nextHop;
++	this->in_port = other.in_port;
+ 	this->priority = other.priority;
+ 	// this->outPort = other.outPort;
+ }
+@@ -179,6 +181,7 @@ bool Rule::equals(const Rule& other) const
+ 	if((this->type == other.type)
+ 			&& (this->wildcards == other.wildcards)
+ 			&& (this->location.compare(other.location) == 0)
++			&& (this->in_port == other.in_port)
+ 			// && (this->nextHop.compare(other.nextHop) == 0) // Not present in OFPT_FLOW_REMOVED messages.
+ 			&& (this->priority == other.priority)
+ 			// && (this->outPort == other.outPort) // Not used in this version.
+@@ -222,6 +225,7 @@ int Rule::operator()() const
+ 	retVal += this->type;
+ 	retVal += (int)this->wildcards;
+ 	retVal += (int)::getIpValueAsInt(this->location);
++	retVal += this->in_port;
+ 	// retVal += (int)::getIpValueAsInt(this->nextHop);
+ 	retVal += this->priority;
+ 	// retVal += this->outPort;
+@@ -232,13 +236,13 @@ int Rule::operator()() const
+ string Rule::toString() const
+ {
+ 	char buffer[1024];
+-	sprintf(buffer, "[Rule] type: %d, dlSrcAddr: %s, dlSrcAddrMask: %s, dlDstAddr: %s, dlDstAddrMask: %s, nwSrcAddr: %s, nwSrcAddrMask: %s, nwDstAddr: %s, nwDstAddrMask: %s, location: %s, nextHop: %s, priority: %u",
++	sprintf(buffer, "[Rule] type: %d, dlSrcAddr: %s, dlSrcAddrMask: %s, dlDstAddr: %s, dlDstAddrMask: %s, nwSrcAddr: %s, nwSrcAddrMask: %s, nwDstAddr: %s, nwDstAddrMask: %s, location: %s, nextHop: %s, in_port: %u, priority: %u",
+ 			this->type,
+ 			this->fieldValue[DL_SRC].c_str(), this->fieldMask[DL_SRC].c_str(),
+ 			this->fieldValue[DL_DST].c_str(), this->fieldMask[DL_DST].c_str(),
+ 			this->fieldValue[NW_SRC].c_str(), this->fieldMask[NW_SRC].c_str(),
+ 			this->fieldValue[NW_DST].c_str(), this->fieldMask[NW_DST].c_str(),
+-			this->location.c_str(), this->nextHop.c_str(), this->priority);
++			this->location.c_str(), this->nextHop.c_str(), this->in_port, this->priority);
+ 
+ 	string retVal = buffer;
+ 	retVal += ", ";
+diff --git a/veriflow/VeriFlow/Rule.h b/veriflow/VeriFlow/Rule.h
+index f591283..ea01eeb 100644
+--- a/veriflow/VeriFlow/Rule.h
++++ b/veriflow/VeriFlow/Rule.h
+@@ -41,6 +41,7 @@ public:
+ 
+ 	string location;
+ 	string nextHop;
++	unsigned int in_port;
+ 	uint16_t priority;
+ 	// uint16_t outPort; // Not used in this version.
+ 
+diff --git a/veriflow/VeriFlow/VeriFlow.cpp b/veriflow/VeriFlow/VeriFlow.cpp
+index db35325..b919223 100644
+--- a/veriflow/VeriFlow/VeriFlow.cpp
++++ b/veriflow/VeriFlow/VeriFlow.cpp
+@@ -55,6 +55,7 @@ static FILE* logFile = NULL;
+ static pthread_mutex_t networkMutex, veriflowMutex;
+ 
+ static VeriFlow veriflow;
++Network network;
+ 
+ int mode = TEST_MODE;
+ 
+@@ -78,7 +79,7 @@ int main(int argc, char** argv)
+ 
+ 	mode = PROXY_MODE;
+ 
+-	Network network;
++	// Network network;
+ 
+ 	string topologyFileName = argv[4];
+ 	parseTopologyFile(topologyFileName, network);
+@@ -973,6 +974,8 @@ void VeriFlow::processCurrentHop(const EquivalenceClass& packetClass, Forwarding
+ 
+ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, double& packetClassSearchTime, double& graphBuildTime, double& queryTime, unsigned long& ecCount, FILE* fp)
+ {
++	// fprintf(fp, "[VeriFlow::verifyRule] verifying this rule: %s\n", rule.toString().c_str());
++		
+ 	updateTime = packetClassSearchTime = graphBuildTime = queryTime = 0;
+ 	ecCount = 0;
+ 
+@@ -1024,7 +1027,6 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
+ 	{
+ 		EquivalenceClass packetClass = vFinalPacketClasses[i];
+ 		// fprintf(stdout, "[VeriFlow::verifyRule] [%u] ecCount: %lu, %s\n", i, ecCount, packetClass.toString().c_str());
+-
+ 		ForwardingGraph* graph = Trie::getForwardingGraph(TP_DST, vFinalTries[i], packetClass, fp);
+ 		vGraph.push_back(graph);
+ 	}
+@@ -1043,7 +1045,9 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
+ 	for(unsigned int i = 0; i < vGraph.size(); i++)
+ 	{
+ 		unordered_set< string > visited;
+-		if(!this->traverseForwardingGraph(vFinalPacketClasses[i], vGraph[i], rule.location, visited, fp)) {
++		string lastHop = network.getNextHopIpAddress(rule.location,rule.in_port);
++		// fprintf(fp, "start traversing at: %s\n", rule.location.c_str());
++		if(!this->traverseForwardingGraph(vFinalPacketClasses[i], vGraph[i], rule.location, lastHop, visited, fp)) {
+ 			++currentFailures;
+ 		}
+ 	}
+@@ -1084,8 +1088,10 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
+ 	return true;
+ }
+ 
+-bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, ForwardingGraph* graph, const string& currentLocation, unordered_set< string > visited, FILE* fp)
++bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, ForwardingGraph* graph, const string& currentLocation, const string& lastHop, unordered_set< string > visited, FILE* fp)
+ {
++
++	// fprintf(fp, "traversing at node: %s\n", currentLocation.c_str());
+ 	if(graph == NULL)
+ 	{
+ 		/* fprintf(fp, "\n");
+@@ -1113,7 +1119,7 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
+ 			}
+ 		}
+ 		faults.push_back(packetClass);
+-		
++
+ 		return false;
+ 	}
+ 
+@@ -1157,6 +1163,33 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
+ 
+ 	const list< ForwardingLink >& linkList = graph->links[currentLocation];
+ 	list< ForwardingLink >::const_iterator itr = linkList.begin();
++	// input_port as a filter
++	if(lastHop.compare("NULL") == 0 || itr->rule.in_port == 65536){
++		// do nothing
++	}
++	else{
++		while(itr != linkList.end()){
++			string connected_hop = network.getNextHopIpAddress(currentLocation, itr->rule.in_port);
++			if(connected_hop.compare(lastHop) == 0) break;
++			itr++;
++		}
++	}
++	
++	if(itr == linkList.end()){
++		// Found a black hole.
++		fprintf(fp, "\n");
++		fprintf(fp, "[VeriFlow::traverseForwardingGraph] Found a BLACK HOLE for the following packet class as there is no outgoing link at current location (%s).\n", currentLocation.c_str());
++		fprintf(fp, "[VeriFlow::traverseForwardingGraph] PacketClass: %s\n", packetClass.toString().c_str());
++		for(unsigned int i = 0; i < faults.size(); i++) {
++			if (packetClass.subsumes(faults[i])) {
++				faults.erase(faults.begin() + i);
++				i--;
++			}
++		}
++		faults.push_back(packetClass);
++
++		return false;
++	}
+ 
+ 	if(itr->isGateway == true)
+ 	{
+@@ -1187,7 +1220,7 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
+ 			fprintf(fp, "[VeriFlow::traverseForwardingGraph] PacketClass: %s\n", packetClass.toString().c_str()); */
+ 		}
+ 
+-		return this->traverseForwardingGraph(packetClass, graph, itr->rule.nextHop, visited, fp);
++		return this->traverseForwardingGraph(packetClass, graph, itr->rule.nextHop, currentLocation, visited, fp);
+ 	}
+ }
+ 
+diff --git a/veriflow/VeriFlow/VeriFlow.h b/veriflow/VeriFlow/VeriFlow.h
+index f293f3c..47edead 100644
+--- a/veriflow/VeriFlow/VeriFlow.h
++++ b/veriflow/VeriFlow/VeriFlow.h
+@@ -108,7 +108,7 @@ public:
+ 	void processCurrentHop(const EquivalenceClass& packetClass, ForwardingGraph* graph, const string& currentLocation, unordered_set< string >& visited, NextHopInfo& nextHopInfo, FILE* fp);
+ 
+ 	bool verifyRule(const Rule& rule, int command, double& updateTime, double& packetClassSearchTime, double& graphBuildTime, double& queryTime, unsigned long& ecCount, FILE* fp);
+-	bool traverseForwardingGraph(const EquivalenceClass& packetClass, ForwardingGraph* graph, const string& currentLocation, unordered_set< string > visited, FILE* fp);
++	bool traverseForwardingGraph(const EquivalenceClass& packetClass, ForwardingGraph* graph, const string& currentLocation, const string& lastHop, unordered_set < string > visited, FILE* fp);
+ 
+ 	int getTotalRuleCount() const;
+ 
+-- 
+2.22.0.windows.1
+
